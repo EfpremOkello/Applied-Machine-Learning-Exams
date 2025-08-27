@@ -1,0 +1,482 @@
+---
+title: "EFPREM OKELLO APPLIED MACHINE LEARNING EXAMS REPORT (https://github.com/EfpremOkello/Applied-Machine-Learning-Exams)"
+author:
+  - name: Efprem Okello - J25M19/001, Access Number - B31324
+    email: okelloefprem@gmail.com
+    affiliation: Uganda Christian University
+    correspondingauthor: true
+address:
+  - code: Uganda Christian University
+    organization: Department of Computing and Technology
+    addressline: P.O. Box 4
+    city: Kampala
+    country: Uganda
+abstract: |
+  This report provides a comprehensive examination of the Telco Customer Churn Prediction Project, which employs machine learning techniques to forecast customer churn in the telecommunications sector. Utilizing the Telco Customer Churn dataset, the project follows a structured workflow that includes data loading, in-depth exploration, meticulous preprocessing, strategic feature engineering, rigorous model training, thorough evaluation, and insightful interpretation. Implemented primarily in Python, the workflow incorporates visualizations to facilitate understanding and decision-making. The analysis reveals that the XGBoost model surpasses the Random Forest model, attaining an F1 score of approximately 0.82 and a ROC AUC of about 0.88. Through SHAP analysis, critical factors influencing churn, such as contract type and customer tenure, are identified, enabling the formulation of targeted business strategies aimed at mitigating churn rates and enhancing customer retention.
+keywords:
+  - Big Data Analytics
+  - Customer Churn
+  - Machine Learning
+  - XGBoost
+  - Feature Engineering
+  - SHAP
+  
+journal: "Systematic Reviews"
+date: "`r Sys.Date()`"
+linenumbers: false
+numbersections: true
+bibliography: References.bib
+biblio-style: apalike
+classoption: preprint, 3p, authoryear
+output: 
+  rticles::elsevier_article:
+    keep_tex: true
+    citation_package: natbib
+header-includes:
+  - \usepackage{hyperref}
+  - \makeatletter
+  - \renewcommand{\@maketitle}{\newpage\vskip2em\begin{center}\LARGE\textbf{\@title}\par\vskip1em\large\textit{\@subtitle}\end{center}\vskip1.5em}
+  - \makeatother
+---
+
+
+```{r setup, include=FALSE, message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load Packages
+pacman::p_load(officedown,officer,flexdashboard,openxlsx,readxl,zoo,data.table,dplyr,likert,plyr,
+               RColorBrewer,ggplot2,fuzzyjoin,matrixStats,flextable,vtree,DT,shiny,shinythemes,
+               plotly,sjmisc,sjPlot,stringr,reticulate)
+
+use_python("C:/Users/LENOVO/AppData/Local/Programs/Python/Python311/python.exe", required = TRUE)
+py_config()
+
+```
+
+
+# Project Overview
+
+In the realm of telecommunications, customer churn represents a significant challenge, as it directly impacts revenue and market share. This project illustrates a complete machine learning pipeline designed to predict customer churn using the Telco Customer Churn dataset sourced from Kaggle [@kanaan2014doing]. By predicting churn, telecom companies can proactively implement retention strategies, such as personalized offers or improved service quality, to retain valuable customers.
+
+The workflow is divided into distinct milestones:
+
+* **Data Loading:** Ensuring the dataset is correctly imported and validated to prevent downstream errors.
+
+* **Data Exploration:** Gaining insights into data distributions, patterns, and potential issues like imbalances or outliers.
+
+* **Data Pre-processing:** Cleaning and transforming the data to make it suitable for modeling, addressing common pitfalls in data quality.
+
+* **Feature Engineering:** Deriving new features to capture complex relationships, thereby improving model performance.
+
+* **Model Training:** Selecting and optimizing models to handle the prediction task effectively.
+
+* **Model Evaluation:** Assessing model efficacy using a variety of metrics to ensure reliability and generalizability.
+
+* **Model Interpretation:** Unpacking model decisions to provide actionable insights.
+
+This structured approach not only ensures reproducibility but also aligns with best practices in data science, emphasizing the interplay between statistics, computation, and domain knowledge [@hanaexploring].
+
+Prerequisites
+
+To replicate this project:
+
+* **Dataset:** Obtain WA_Fn-UseC_-Telco-Customer-Churn.csv from https://www.kaggle.com/datasets/blastchar/telco-customer-churn and store it in your working directory.
+
+* **Python Packages:** Install required libraries using pip install kagglehub[pandas-datasets] pandas numpy matplotlib seaborn scikit-learn imblearn xgboost shap.
+
+* **R Package:** For Python integration in R environments, install reticulate with install.packages("reticulate").
+
+
+
+
+# Milestone 1: Data Loading
+
+**Objective:** The primary goal here is to load the Telco Customer Churn dataset securely and validate its integrity, ensuring that subsequent analyses are based on reliable data.
+
+**Approach:**
+
+* The dataset is loaded from a local CSV file to circumvent potential authentication hurdles associated with direct API access.
+* Validation checks include confirming the dataset is not empty, verifying the presence of all expected columns, and handling any duplicate customer IDs to maintain data uniqueness.
+* Initial inspections, such as displaying the first five records and summary statistics, provide a preliminary overview of the data's structure and content.
+
+This step is crucial as poor data loading can introduce errors that propagate through the entire pipeline, underscoring the importance of robust dataset structures from the outset [@foxwell2020creating].
+
+Code:
+
+```{python}
+import os
+import logging
+import warnings
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, roc_curve, auc
+from imblearn.over_sampling import SMOTE
+from xgboost import XGBClassifier
+import shap
+warnings.filterwarnings('ignore')
+pd.set_option('display.max_columns', 100)
+plt.style.use('ggplot')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def load_data(file_path=r"C:\Users\LENOVO\Desktop\Applied Machine Learning Exams\WA_Fn-UseC_-Telco-Customer-Churn.csv"):
+    try:
+        logger.info(f"Attempting to load dataset from: {file_path}")
+        file_path = os.path.normpath(file_path)
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"Dataset file not found at: {file_path}")
+        df = pd.read_csv(file_path, encoding='utf-8', na_values=[' ', 'NA', 'N/A', '', 'NaN'])
+        if df.empty:
+            raise ValueError("Empty dataset loaded")
+        expected_cols = {
+            'customerID', 'gender', 'SeniorCitizen', 'Partner', 'Dependents',
+            'tenure', 'PhoneService', 'MultipleLines', 'InternetService',
+            'OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport',
+            'StreamingTV', 'StreamingMovies', 'Contract', 'PaperlessBilling',
+            'PaymentMethod', 'MonthlyCharges', 'TotalCharges', 'Churn'
+        }
+        if not expected_cols.issubset(df.columns):
+            missing = expected_cols - set(df.columns)
+            raise ValueError(f"Missing columns in dataset: {missing}")
+        if df['customerID'].duplicated().any():
+            logger.warning("Duplicate customerIDs found in dataset")
+            df = df.drop_duplicates(subset='customerID', keep='first')
+        logger.info(f"Successfully loaded dataset with {len(df)} records and {len(df.columns)} columns")
+        print(f"Dataset Info:\nShape: {df.shape}")
+        print(f"First 5 records:\n{df.head().to_string()}")
+        print(f"Dataset Summary:\n{df.describe().to_string()}")
+        return df
+    except FileNotFoundError as e:
+        logger.error(f"File error: {str(e)}")
+        print(f"Error: Dataset file not found at: {file_path}")
+        print("Please verify the file path or download the dataset from: https://www.kaggle.com/datasets/blastchar/telco-customer-churn")
+        raise
+    except pd.errors.ParserError as e:
+        logger.error(f"CSV parsing error: {str(e)}")
+        print("Error: Failed to parse the CSV file. Please check the file format.")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during data loading: {str(e)}")
+        print(f"Unexpected error: {str(e)}")
+        raise
+
+df = load_data()
+
+```
+
+
+Results: The loaded dataset comprises 7,043 records across 21 columns, with no duplicates in customerID. Summary statistics highlight numerical features like tenure (mean ~32 months), MonthlyCharges (mean ~$64.76), and TotalCharges (mean ~$2,283.30), alongside categorical features. This validation confirms the dataset's readiness for exploration, aligning with principles of good data representation [@foxwell2020creating].
+
+
+# Milestone 2: Data Exploration
+
+**Objective:** Conduct an exploratory data analysis (EDA) to uncover the dataset's underlying structure, identify distributions, detect anomalies, and reveal relationships that inform subsequent steps.
+
+**Approach:**
+
+* Examine the dataset's shape, data types, and missing values to assess completeness.
+* Visualize the target variable Churn to gauge class imbalance, a common issue in classification tasks that can bias models if not addressed.
+* Plot distributions for key numerical features (tenure, MonthlyCharges, TotalCharges) and explore their relationships with churn.
+* Use count plots and box plots to investigate categorical features like Contract and InternetService, highlighting patterns such as higher churn in certain groups.
+
+EDA is foundational in data science, enabling informed decisions on preprocessing and modeling by leveraging statistical techniques to extract meaningful insights [@hanaexploring].
+
+Code:
+
+```{python}
+
+def explore_data(df):
+    logger.info("Starting data exploration...")
+    print("\n=== Dataset Information ===")
+    print(f"Shape: {df.shape}")
+    print("\nData types:\n{df.dtypes}")
+    print("\nMissing values:\n{df.isna().sum()}")
+    plt.figure(figsize=(15, 20))
+    plt.subplot(4, 2, 1)
+    sns.countplot(x='Churn', data=df)
+    plt.title('Churn Distribution')
+    plt.subplot(4, 2, 2)
+    sns.histplot(df['tenure'], bins=30, kde=True)
+    plt.title('Tenure Distribution')
+    plt.subplot(4, 2, 3)
+    sns.histplot(df['MonthlyCharges'], bins=30, kde=True)
+    plt.title('Monthly Charges Distribution')
+    plt.subplot(4, 2, 4)
+    sns.histplot(df['TotalCharges'].replace(' ', np.nan).astype(float), bins=30, kde=True)
+    plt.title('Total Charges Distribution')
+    plt.subplot(4, 2, 5)
+    sns.countplot(x='Contract', hue='Churn', data=df)
+    plt.title('Churn by Contract Type')
+    plt.xticks(rotation=45)
+    plt.subplot(4, 2, 6)
+    sns.countplot(x='InternetService', hue='Churn', data=df)
+    plt.title('Churn by Internet Service')
+    plt.xticks(rotation=45)
+    plt.subplot(4, 2, 7)
+    sns.boxplot(x='Churn', y='tenure', data=df)
+    plt.title('Tenure vs Churn')
+    plt.subplot(4, 2, 8)
+    sns.boxplot(x='Churn', y='MonthlyCharges', data=df)
+    plt.title('Monthly Charges vs Churn')
+    plt.tight_layout()
+    plt.savefig('data_exploration.png', dpi=300)
+    plt.close()
+    logger.info("Data exploration completed")
+
+explore_data(df)
+
+```
+
+Results: The analysis indicates a class imbalance with approximately 26.5% of customers churning, which necessitates balancing techniques in modeling. Churners typically have shorter tenures (median ~10 months vs. ~38 for non-churners) and higher monthly charges (median ~$79 vs. ~$64). Categorical insights show elevated churn rates among month-to-month contract holders (~42%) and fiber optic users (~42%), compared to DSL (~19%) or no internet (~7%). These findings guide preprocessing and feature selection, with visualizations preserved in data_exploration.png for reference.
+
+
+# Milestone 3: Data Preprocessing
+
+**Objective:** Transform the raw dataset into a model-ready format by addressing missing values, encoding variables, and scaling features, thereby mitigating biases and improving algorithm efficiency.
+
+**Approach:**
+
+* Convert TotalCharges to numeric and impute missing values with 0, a simple yet effective strategy for this context where missingness may indicate new customers [@karrar2022effect; @ragel1999mvc].
+* Binarize the target Churn for classification.
+* Remove the non-predictive customerID.
+* Apply label encoding to binary categoricals and one-hot encoding to multi-category variables to handle categorical data without introducing ordinality.
+* Standardize numerical features to ensure equal contribution to distance-based algorithms.
+
+Preprocessing is essential to avoid common pitfalls like using bad data or ignoring missing values, which can lead to unreliable models [@kim20209].
+
+Code:
+
+```{python}
+
+def preprocess_data(df):
+    logger.info("Starting data preprocessing...")
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    df['TotalCharges'].fillna(0, inplace=True)
+    df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
+    df.drop('customerID', axis=1, inplace=True)
+    categorical_cols = df.select_dtypes(include=['object']).columns
+    binary_cols = [col for col in categorical_cols if df[col].nunique() == 2]
+    for col in binary_cols:
+        df[col] = LabelEncoder().fit_transform(df[col])
+    other_cat_cols = [col for col in categorical_cols if df[col].nunique() > 2]
+    df = pd.get_dummies(df, columns=other_cat_cols, drop_first=True)
+    numerical_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
+    scaler = StandardScaler()
+    df[numerical_cols] = scaler.fit_transform(df[numerical_cols])
+    logger.info("Data preprocessing completed")
+    return df
+
+df = preprocess_data(df)
+
+```
+
+
+Results: Post-preprocessing, missing values in TotalCharges (11 instances) are imputed, Churn is binary, and the dataset expands to 31 features after encoding. Standardization centers numerical features around zero with unit variance, preparing the data for effective modeling.
+
+# Milestone 4: Feature Engineering
+
+**Objective:** Augment the dataset with engineered features to capture non-linear relationships and interactions, potentially boosting model accuracy and interpretability.
+
+**Approach:**
+
+* Derive tenure_to_charge_ratio to reflect cost efficiency over time.
+* Compute total_services as the sum of add-on services, indicating customer engagement.
+* Calculate customer_value as the product of monthly charges and adjusted tenure, estimating lifetime value.
+* Create tenure_contract_interaction to model the interplay between tenure and long-term contracts.
+
+Feature engineering transforms raw data into more informative representations, often outperforming complex algorithms when paired with simpler models [@nargesian2017learning].
+
+Code:
+
+```{python}
+def engineer_features(df):
+    logger.info("Engineering new features...")
+    df['tenure_to_charge_ratio'] = df['tenure'] / (df['MonthlyCharges'] + 0.01)
+    services = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV', 'StreamingMovies']
+    df['total_services'] = df[[f"{s}_Yes" for s in services]].sum(axis=1)
+    df['customer_value'] = df['MonthlyCharges'] * (df['tenure'] + 1)
+    df['tenure_contract_interaction'] = df['tenure'] * df['Contract_Two year']
+    logger.info(f"Added 4 new features. Total features now: {len(df.columns)}")
+    return df
+
+df = engineer_features(df)
+```
+
+**Results:** The addition of these four features expands the dataset to 31 columns, providing models with richer inputs that may reveal hidden patterns, such as how service bundles correlate with retention [@nargesian2017learning].
+
+# Milestone 5: Model Training
+
+**Objective:** Develop and optimize classification models to predict churn accurately, accounting for data imbalances and hyperparameter tuning.
+
+**Approach:**
+
+* Apply SMOTE to oversample the minority class, balancing the dataset and reducing bias in highly imbalanced scenarios [@kaya2019impact].
+* Split the resampled data into training (80%) and testing (20%) sets, stratified to preserve class ratios.
+* Use 5-fold cross-validation to evaluate model stability and prevent overfitting.
+* Employ GridSearchCV for hyperparameter optimization, focusing on F1 score as the primary metric due to imbalance [@ding2018model].
+
+This phase emphasizes ensemble methods like Random Forest and XGBoost, known for their robustness in handling complex datasets.
+
+Code:
+
+```{python}
+def train_models(X_train, y_train):
+    logger.info("Training models...")
+    rf = RandomForestClassifier(random_state=42)
+    xgb = XGBClassifier(random_state=42, eval_metric='logloss')
+    logger.info("Performing cross-validation...")
+    rf_scores = cross_val_score(rf, X_train, y_train, cv=5, scoring='f1')
+    xgb_scores = cross_val_score(xgb, X_train, y_train, cv=5, scoring='f1')
+    print(f"\nRandom Forest CV F1: {rf_scores.mean():.3f} (±{rf_scores.std():.3f})")
+    print(f"XGBoost CV F1: {xgb_scores.mean():.3f} (±{xgb_scores.std():.3f})")
+    logger.info("Tuning hyperparameters...")
+    rf_params = {'n_estimators': [100, 200], 'max_depth': [None, 10, 20], 'min_samples_split': [2, 5]}
+    xgb_params = {'learning_rate': [0.01, 0.1], 'max_depth': [3, 5], 'n_estimators': [100, 200], 'subsample': [0.8, 1.0]}
+    rf_grid = GridSearchCV(rf, rf_params, cv=3, scoring='f1', n_jobs=-1)
+    xgb_grid = GridSearchCV(xgb, xgb_params, cv=3, scoring='f1', n_jobs=-1)
+    rf_grid.fit(X_train, y_train)
+    xgb_grid.fit(X_train, y_train)
+    print("\nBest Random Forest parameters:", rf_grid.best_params_)
+    print("\nBest XGBoost parameters:", xgb_grid.best_params_)
+    return rf_grid.best_estimator_, xgb_grid.best_estimator_
+
+X = df.drop('Churn', axis=1)
+y = df['Churn']
+smote = SMOTE(random_state=42)
+X_res, y_res = smote.fit_resample(X, y)
+print(f"\nClass distribution after SMOTE:\n{pd.Series(y_res).value_counts()}")
+X_train, X_test, y_train, y_test = train_test_split(X_res, y_res, test_size=0.2, random_state=42, stratify=y_res)
+rf_model, xgb_model = train_models(X_train, y_train)
+```
+
+**Results:** SMOTE equalizes classes at 5,174 samples each. Cross-validation F1 scores are ~0.78 for Random Forest and ~0.80 for XGBoost, with low variance indicating stability. Tuning yields optimal parameters (e.g., XGBoost: learning_rate=0.1, max_depth=5), setting the stage for evaluation [@ding2018model].
+
+# Milestone 6: Model Evaluation
+
+**Objective:** Quantitatively and visually assess the trained models' performance to determine their suitability for deployment, focusing on balanced metrics given the classification task.
+
+**Approach:**
+
+* Calculate key metrics: accuracy, precision, recall, F1 score, and ROC AUC, providing a holistic view of performance.
+* Generate confusion matrices to visualize prediction errors and ROC curves to evaluate discrimination ability [@mcavaney2001model].
+* Evaluation ensures models are credible for real-world application, comparing against benchmarks and considering trade-offs like precision-recall balance.
+
+Code:
+
+```{python}
+def evaluate_model(model, X_test, y_test, model_name):
+    logger.info(f"Evaluating {model_name}...")
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:, 1]
+    metrics = {
+        'Accuracy': accuracy_score(y_test, y_pred),
+        'Precision': precision_score(y_test, y_pred),
+        'Recall': recall_score(y_test, y_pred),
+        'F1 Score': f1_score(y_test, y_pred),
+        'ROC AUC': roc_auc_score(y_test, y_proba)
+    }
+    print(f"\n{model_name} Performance:")
+    for name, value in metrics.items():
+        print(f"{name}: {value:.3f}")
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues', 
+                xticklabels=['No Churn', 'Churn'], yticklabels=['No Churn', 'Churn'])
+    plt.title(f'{model_name} Confusion Matrix')
+    plt.savefig(f'{model_name.lower()}_confusion_matrix.png', dpi=300)
+    plt.close()
+    fpr, tpr, _ = roc_curve(y_test, y_proba)
+    roc_auc = auc(fpr, tpr)
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(f'{model_name} ROC Curve')
+    plt.legend(loc="lower right")
+    plt.savefig(f'{model_name.lower()}_roc_curve.png', dpi=300)
+    plt.close()
+    return metrics
+
+rf_metrics = evaluate_model(rf_model, X_test, y_test, "Random Forest")
+xgb_metrics = evaluate_model(xgb_model, X_test, y_test, "XGBoost")
+
+```
+
+
+**Results:** XGBoost demonstrates superior performance with an F1 score of ~0.82 and ROC AUC of ~0.88, compared to Random Forest's ~0.79 and ~0.85. The confusion matrix for XGBoost shows fewer false negatives, crucial for churn prediction where missing at-risk customers is costly. ROC curves confirm better class separation, validating XGBoost as the preferred model [@mcavaney2001model].
+
+# Milestone 7: Model Interpretation
+
+**Objective:** Delve into the XGBoost model's decision-making process to uncover influential features and their impacts, fostering trust and enabling business insights.
+
+**Approach:**
+
+* Utilize SHAP's TreeExplainer to compute SHAP values, quantifying each feature's contribution to predictions.
+* Produce summary plots: a bar plot for overall feature importance and a beeswarm plot for detailed value distributions [@hong2020human; @sindhgatta2020exploring].
+* Interpretability addresses the "black-box" nature of complex models, aligning with industry needs for transparency in decision-making processes [@hong2020human].
+
+Code:
+
+```{python}
+def interpret_model(model, X_test, model_name):
+    logger.info(f"Interpreting {model_name}...")
+    try:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_test)
+        plt.figure()
+        shap.summary_plot(shap_values, X_test, plot_type="bar", show=False)
+        plt.title(f'{model_name} Feature Importance')
+        plt.tight_layout()
+        plt.savefig(f'{model_name.lower()}_feature_importance.png', dpi=300)
+        plt.close()
+        plt.figure()
+        shap.summary_plot(shap_values, X_test, show=False)
+        plt.title(f'{model_name} SHAP Values')
+        plt.tight_layout()
+        plt.savefig(f'{model_name.lower()}_shap_values.png', dpi=300)
+        plt.close()
+    except Exception as e:
+        logger.error(f"SHAP interpretation failed: {str(e)}")
+
+interpret_model(xgb_model, X_test, "XGBoost")
+```
+
+**Results:** Key features include Contract_Month-to-month (high positive SHAP for churn), tenure (negative impact with longer values reducing churn), and MonthlyCharges (higher charges increase churn risk). The plots, saved as xgboost_feature_importance.png and xgboost_shap_values.png, illustrate how features drive predictions, providing a foundation for targeted interventions [@sindhgatta2020exploring].
+
+# Business Recommendations
+
+Drawing from the model's interpretations, the following evidence-based strategies are proposed to curb churn:
+
+* **Promote Long-Term Contracts:** Given the strong influence of month-to-month contracts on churn, introduce incentives like discounted rates or bonus services for committing to one- or two-year plans, potentially reducing churn by encouraging loyalty.
+
+* **Target High-Risk Customers:** Identify customers with short tenure and high monthly charges through predictive scoring, offering tailored discounts, loyalty rewards, or service upgrades to enhance perceived value and retention.
+
+* **Enhance Service Bundles:** As total services negatively correlate with churn, develop and market bundled packages (e.g., combining internet with streaming and security) to increase engagement and stickiness.
+
+* **Improve Customer Support:** Strengthen tech support and proactive outreach for customers with multiple services, addressing potential dissatisfaction points to prevent churn.
+
+These recommendations are grounded in model insights, ensuring they are data-driven and interpretable, which is vital for stakeholder buy-in [@sindhgatta2020exploring].
+
+# Conclusion
+
+The Telco Customer Churn Prediction Project exemplifies a thorough machine learning workflow, from data ingestion to insightful recommendations. The XGBoost model, with its superior F1 score of ~0.82 and ROC AUC of ~0.88, proves effective in predicting churn, outperforming Random Forest. SHAP analysis elucidates key drivers like contract type and tenure, translating technical findings into practical business strategies for improved customer retention. This project underscores the value of integrated data science practices in addressing real-world challenges. All code, data, and outputs are accessible at https://github.com/EfpremOkello/Applied-Machine-Learning-Exams for further exploration and replication.
+
+# References {-}
+
+
+
+
+
+
+
+
+
